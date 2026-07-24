@@ -1,0 +1,25 @@
+<?xml version="1.0"?>
+<rss xmlns:torznab="http://torznab.com/schemas/2015/feed"><channel>
+  <item>
+    <title>Ubuntu &amp; Friends</title>
+    <guid>magnet:?xt=urn:btih:abc</guid>
+    <link>https://indexer.example/details/42</link>
+    <category>5000</category>
+    <pubDate>Mon, 01 Jan 2026 00:00:00 +0000</pubDate>
+    <enclosure url="https://indexer.example/download/42" length="1073741824" type="application/x-bittorrent"/>
+    <torznab:attr name="seeders" value="27"/>
+    <torznab:attr name="peers" value="4"/>
+    <torznab:attr name="grabs" value="9"/>
+  </item>
+  <item>
+    <title>Debian Bookworm</title>
+    <torznab:attr name="infohash" value="def456"/>
+    <torznab:attr name="seeders" value="12"/>
+    <torznab:attr name="leechers" value="2"/>
+    <torznab:attr name="size" value="4294967296"/>
+  </item>
+  <item>
+    <!-- No title: must be dropped as malformed, not surfaced as an empty result -->
+    <guid>magnet:?xt=urn:btih:notitle</guid>
+  </item>
+</channel></rss>
