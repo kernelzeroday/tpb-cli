@@ -20,11 +20,16 @@ Pass the base URL of a mirror (not a search results page URL):
 tpb search "Ubuntu 24.04" --proxy https://apibay.org
 ```
 
-`search` is optional for a simple query:
+`search` is optional for a simple query, and works with zero configuration:
 
 ```bash
-tpb "Ubuntu 24.04" --proxy https://apibay.org
+tpb "Ubuntu 24.04"
 ```
+
+With no `--proxy`, no `TPB_PROXIES`, and nothing yet saved by `discover`, a
+bare search falls back to a small built-in list of known-working mirrors
+(currently just `apibay.org`, the canonical host) before ever needing to
+touch Shodan. `--proxy`/`TPB_PROXIES` still take priority when set.
 
 Use several mirrors concurrently, so no one of them is a single point of failure:
 
@@ -59,7 +64,7 @@ Verified endpoints are written to `~/.config/tpb/proxies` (or `$XDG_CONFIG_HOME/
 tpb search "ubuntu 24.04" --shodan -n 10
 ```
 
-`discover` writing multiple mirrors to that cache, and `search` fanning out across all of them concurrently, is what makes this decentralized: it doesn't depend on one hardcoded host.
+`discover` writing multiple mirrors to that cache, and `search` fanning out across all of them concurrently, is what makes this decentralized: it doesn't depend on one hardcoded host. In practice, independent mirrors of this exact API are not common or reliably fingerprintable on Shodan; the built-in known-mirror list above is the main reason zero-config search works, and `discover`/`--shodan` exist to find more if and when they're out there.
 
 Use `--verbose` to see rejected candidates and per-mirror request failures, `--shodan-limit` to change the candidate count per query, `--concurrency` to bound parallel HTTP requests, and `--json` for machine-readable output.
 

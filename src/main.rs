@@ -79,7 +79,18 @@ async fn run_search(args: SearchArgs, color: bool) -> Result<()> {
     let client = search::build_client(discovery.timeout_secs)?;
     let mut sources = configured_sources(&args.proxy)?;
 
-    if args.shodan {
+    // No --proxy, no TPB_PROXIES, and nothing saved from a previous
+    // `discover` yet: bootstrap via Shodan automatically so a bare `tpb
+    // <query>` works with zero configuration, the same way `--shodan` does
+    // explicitly. Once this succeeds, the discovered mirrors are cached, so
+    // later bare searches use them without repeating a Shodan query.
+    let auto_discovering = sources.is_empty() && !args.shodan;
+    if args.shodan || auto_discovering {
+        if auto_discovering {
+            eprintln!(
+                "no mirrors configured; discovering some via Shodan (pass --proxy or set TPB_PROXIES to skip this)"
+            );
+        }
         let discovered = discover(&client, &discovery).await?;
         announce_saved_endpoints(&discovered)?;
         sources.extend(discovered.into_iter().filter_map(|result| {

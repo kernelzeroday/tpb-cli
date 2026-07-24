@@ -114,6 +114,14 @@ async fn discover_shodan(query: &str, limit: usize) -> Result<Vec<Source>> {
 
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+        // The Shodan CLI exits non-zero for a query that simply matched
+        // nothing; that is a legitimate empty candidate list, not a failure.
+        if stderr
+            .to_ascii_lowercase()
+            .contains("no search results found")
+        {
+            return Ok(Vec::new());
+        }
         bail!("Shodan CLI failed: {stderr}");
     }
 

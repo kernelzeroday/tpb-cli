@@ -3,6 +3,13 @@ use reqwest::Url;
 use std::collections::HashSet;
 use std::env;
 
+/// Public mirrors known to run this exact API, tried when nothing else is
+/// configured or cached. This is intentionally short and only includes
+/// mirrors actually verified to respond correctly; Shodan discovery (see
+/// `crate::discover`) is the mechanism for finding others, since there is
+/// no reliable way to fingerprint this API's mirrors at scale.
+pub const KNOWN_MIRRORS: &[&str] = &["https://apibay.org"];
+
 #[derive(Debug, Clone)]
 pub struct Source {
     pub endpoint: Url,
@@ -26,9 +33,10 @@ impl Source {
 
 /// Resolves the sources to search, in priority order: explicit `--proxy`
 /// flags, then `TPB_PROXIES`, then any endpoints saved by a previous
-/// `tpb discover`. Supporting several independent sources at once, rather
-/// than one hardcoded default host, is what makes search decentralized:
-/// no single mirror going down or rate-limiting stops a search.
+/// `tpb discover`, then the small built-in [`KNOWN_MIRRORS`] fallback.
+/// Supporting several independent sources at once, rather than one
+/// hardcoded default host, is what makes search decentralized: no single
+/// mirror going down or rate-limiting stops a search.
 pub fn configured_sources(proxies: &[String]) -> Result<Vec<Source>> {
     if !proxies.is_empty() {
         return parse_sources(proxies.to_vec(), "cli");
@@ -45,7 +53,15 @@ pub fn configured_sources(proxies: &[String]) -> Result<Vec<Source>> {
         return parse_sources(sources, "environment");
     }
 
-    parse_sources(crate::cache::load_discovered_sources()?, "discovery cache")
+    let discovered = crate::cache::load_discovered_sources()?;
+    if !discovered.is_empty() {
+        return parse_sources(discovered, "discovery cache");
+    }
+
+    parse_sources(
+        KNOWN_MIRRORS.iter().map(|url| url.to_string()).collect(),
+        "known mirror",
+    )
 }
 
 pub fn parse_sources(raw: Vec<String>, origin: &str) -> Result<Vec<Source>> {
@@ -104,5 +120,16 @@ mod tests {
         )
         .unwrap();
         assert_eq!(deduplicate_sources(sources).len(), 1);
+    }
+
+    #[test]
+    fn known_mirrors_are_non_empty_and_parse_as_valid_sources() {
+        assert!(!KNOWN_MIRRORS.is_empty());
+        let sources = parse_sources(
+            KNOWN_MIRRORS.iter().map(|url| url.to_string()).collect(),
+            "known mirror",
+        )
+        .expect("every built-in known mirror must be a valid http(s) URL");
+        assert_eq!(sources.len(), KNOWN_MIRRORS.len());
     }
 }
