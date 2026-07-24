@@ -1,10 +1,10 @@
 # tpb
 
-`tpb` is an asynchronous CLI client for the [Torznab](https://torznab.github.io/spec-1.3-draft/index.html) search API. Point it at a Torznab endpoint you have configured or otherwise trust, and it searches, normalizes, ranks, and de-duplicates the results.
+`tpb` is an asynchronous, decentralized CLI client for The Pirate Bay's public JSON search API (widely known as "apibay") and the mirrors that run the same software. It searches several independent mirrors concurrently, normalizes, ranks, and de-duplicates the results, so no single mirror going down, rate-limiting, or disappearing stops a search.
 
-It does not download torrent content. It prints the metadata and magnet or download link returned by the indexer.
+It does not download torrent content. It prints the metadata and magnet link returned by each mirror.
 
-See [`PROJECT_BRIEF.md`](PROJECT_BRIEF.md) for the design rationale, including why an ordinary proxy-served torrent-site HTML interface was rejected in favor of Torznab as the first supported source contract.
+See [`PROJECT_BRIEF.md`](PROJECT_BRIEF.md) for the design history, including why an earlier direction (Torznab) was replaced with this one.
 
 ## Install
 
@@ -12,63 +12,65 @@ See [`PROJECT_BRIEF.md`](PROJECT_BRIEF.md) for the design rationale, including w
 cargo install --path .
 ```
 
-## Search configured indexers
+## Search configured mirrors
 
-Pass the complete Torznab endpoint, not a web UI URL:
+Pass the base URL of a mirror (not a search results page URL):
 
 ```bash
-tpb search "Ubuntu 24.04" --indexer http://localhost:3333/torznab
+tpb search "Ubuntu 24.04" --proxy https://apibay.org
 ```
 
 `search` is optional for a simple query:
 
 ```bash
-tpb "Ubuntu 24.04" --indexer http://localhost:3333/torznab
+tpb "Ubuntu 24.04" --proxy https://apibay.org
 ```
 
-Use several endpoints concurrently:
+Use several mirrors concurrently, so no one of them is a single point of failure:
 
 ```bash
 tpb search "Fedora Workstation" \
-  -i http://localhost:3333/torznab \
-  -i http://localhost:9117/api/v2.0/indexers/all/results/torznab/api \
-  --api-key "$JACKETT_API_KEY"
+  -p https://apibay.org \
+  -p https://mirror.example/
 ```
 
-`TPB_INDEXERS` may hold a comma-separated list of endpoint URLs, and `TPB_API_KEY` supplies a default `--api-key`, so neither has to be repeated per invocation.
+`TPB_PROXIES` may hold a comma-separated list of mirror base URLs, so it doesn't have to be repeated per invocation.
 
-Results that share a BitTorrent info hash are condensed into one entry; seed and leech counts from multiple indexers are averaged and labelled `avg`, and the entry lists how many indexers returned that hash. Combined output defaults to 40 results (`-n`/`--limit`); `--per-source-limit` bounds the request size sent to each endpoint, and `--fanout` bounds how many endpoints are queried concurrently in each fallback batch.
+Results that share a BitTorrent info hash are condensed into one entry; seed and leech counts from multiple mirrors are averaged and labelled `avg`, and the entry lists how many mirrors returned that hash. Combined output defaults to 40 results (`-n`/`--limit`); `--fanout` bounds how many mirrors are queried concurrently in each fallback batch — later batches are only tried if an earlier one returns nothing.
 
-Successful searches are cached for 15 minutes under `~/.cache/tpb/searches` (or `$XDG_CACHE_HOME/tpb/searches`). If every configured indexer is unreachable or times out, the most recent matching cached result is shown instead, with a warning on stderr. Pass `--no-cache` to skip both reading and writing this cache. Clear it at any time:
+Successful searches are cached for 15 minutes under `~/.cache/tpb/searches` (or `$XDG_CACHE_HOME/tpb/searches`). If every configured mirror is unreachable or times out, the most recent matching cached result is shown instead, with a warning on stderr. Pass `--no-cache` to skip both reading and writing this cache. Clear it at any time:
 
 ```bash
 tpb cache clear
 ```
 
-## Discover candidate endpoints with Shodan
+## Discover mirrors with Shodan
 
-`discover` shells out to a locally configured [`shodan` CLI](https://cli.shodan.io/) to search for services matching a fingerprint you supply, then probes every candidate concurrently with `?t=caps`. Only responses that are genuine Torznab capability documents are kept; nothing else from a Shodan result is ever trusted as an indexer. There is no built-in default fingerprint — you must supply one with `--shodan-query`, since baking in a single piece of software's signature would misrepresent it as the only or the recommended option:
-
-```bash
-tpb discover --shodan-query 'http.title:"some-torznab-frontend"'
-```
-
-Verified endpoints are written to `~/.config/tpb/indexers` (or `$XDG_CONFIG_HOME/tpb/indexers`) and are used automatically by a bare `search` once `--indexer` and `TPB_INDEXERS` are both unset. Add `--shodan` to a search to refresh discovery first:
+`discover` shells out to a locally configured [`shodan` CLI](https://cli.shodan.io/) to search for services matching a fingerprint, then probes every candidate concurrently with a real search request. Only responses that actually deserialize into this API's expected shape are kept; nothing else from a Shodan result is ever trusted as a mirror. A broad default query (`apibay`) is built in so discovery works with zero flags, but you can narrow or replace it:
 
 ```bash
-tpb search "ubuntu 24.04" --shodan --shodan-query 'http.title:"some-torznab-frontend"' -n 10
+tpb discover
+tpb discover --shodan-query 'http.html:"apibay"'
 ```
 
-Use `--verbose` to see rejected candidates and per-source request failures, `--shodan-limit` to change the candidate count per query, `--concurrency` to bound parallel HTTP requests, and `--json` for machine-readable output.
+Verified endpoints are written to `~/.config/tpb/proxies` (or `$XDG_CONFIG_HOME/tpb/proxies`) and are used automatically by a bare `search` once `--proxy` and `TPB_PROXIES` are both unset. Add `--shodan` to a search to refresh discovery first:
 
-The Shodan scan is opt-in (`--shodan` for search, or the dedicated `discover` command). For controlled or authenticated deployments, prefer an explicit `--indexer` endpoint instead.
+```bash
+tpb search "ubuntu 24.04" --shodan -n 10
+```
+
+`discover` writing multiple mirrors to that cache, and `search` fanning out across all of them concurrently, is what makes this decentralized: it doesn't depend on one hardcoded host.
+
+Use `--verbose` to see rejected candidates and per-mirror request failures, `--shodan-limit` to change the candidate count per query, `--concurrency` to bound parallel HTTP requests, and `--json` for machine-readable output.
+
+The Shodan scan is opt-in (`--shodan` for search, or the dedicated `discover` command). For controlled deployments, prefer explicit `--proxy` endpoints instead.
 
 ## JSON output
 
 Every command accepts `--json` for scripting:
 
 ```bash
-tpb search "debian 12" --indexer http://localhost:3333/torznab --json | jq '.[0].magnet'
+tpb search "debian 12" --proxy https://apibay.org --json | jq '.[0].magnet'
 ```
 
 ## Development
@@ -79,4 +81,4 @@ cargo test
 cargo clippy --all-targets -- -D warnings
 ```
 
-Torznab response parsing is covered by fixture files under `tests/fixtures/`, covering a normal result feed, an empty feed, a Torznab `<error>` document, malformed XML, and a capability document.
+API response parsing is covered by fixture files under `tests/fixtures/`: a normal result set, the API's no-results sentinel row, and a response that doesn't match the expected shape at all.

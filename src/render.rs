@@ -86,7 +86,7 @@ pub fn print_discovery(results: &[DiscoveryResult], color: bool) {
     if results.is_empty() {
         println!(
             "{}",
-            paint(YELLOW, "No reachable Torznab endpoints found.", color)
+            paint(YELLOW, "No reachable Pirate Bay mirrors found.", color)
         );
         return;
     }

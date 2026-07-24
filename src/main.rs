@@ -1,16 +1,18 @@
-//! `tpb`: a terminal-first search client for Torznab-compatible torrent
-//! indexers. See `PROJECT_BRIEF.md` for the design rationale, in particular
-//! why Torznab (a documented, self-describing protocol) was chosen over
-//! scraping an arbitrary proxy-served web interface.
+//! `tpb`: a terminal-first, decentralized search client for The Pirate
+//! Bay's public API and its mirrors. See `PROJECT_BRIEF.md` for the design
+//! history, including why this targets that API rather than a generic
+//! Torznab indexer: no single mirror is queried by default, and Shodan
+//! discovery plus concurrent multi-mirror search means one mirror going
+//! down does not stop a search.
 
 mod cache;
 mod cli;
 mod discover;
+mod proxy;
 mod render;
 mod search;
 mod source;
 mod torrent;
-mod torznab;
 
 use anyhow::{Result, bail};
 use cli::{CacheCommand, Cli, CommandKind, DiscoverArgs, SearchArgs};
@@ -70,15 +72,12 @@ async fn run_search(args: SearchArgs, color: bool) -> Result<()> {
     if !(1..=100).contains(&args.limit) {
         bail!("--limit must be between 1 and 100");
     }
-    if !(1..=100).contains(&args.per_source_limit) {
-        bail!("--per-source-limit must be between 1 and 100");
-    }
     if !(1..=100).contains(&args.fanout) {
         bail!("--fanout must be between 1 and 100");
     }
 
     let client = search::build_client(discovery.timeout_secs)?;
-    let mut sources = configured_sources(&args.indexer)?;
+    let mut sources = configured_sources(&args.proxy)?;
 
     if args.shodan {
         let discovered = discover(&client, &discovery).await?;
@@ -94,19 +93,16 @@ async fn run_search(args: SearchArgs, color: bool) -> Result<()> {
     sources = deduplicate_sources(sources);
     if sources.is_empty() {
         bail!(
-            "provide --indexer <full Torznab URL>, set TPB_INDEXERS, or add --shodan with --shodan-query"
+            "provide --proxy <mirror base URL>, set TPB_PROXIES, or add --shodan to discover mirrors"
         );
     }
 
     let query = args.query.join(" ");
-    let api_key = args.api_key.as_deref();
 
     let (torrents, failures) = search::search_all(
         &client,
         &sources,
         &query,
-        args.per_source_limit,
-        api_key,
         args.fanout,
         discovery.concurrency,
     )
@@ -132,7 +128,7 @@ async fn run_search(args: SearchArgs, color: bool) -> Result<()> {
             && let Some(cached) = cache::load_cached_search(&query)
         {
             eprintln!(
-                "warning: live indexers are unavailable; showing a cached result from the last {} minutes",
+                "warning: live mirrors are unavailable; showing a cached result from the last {} minutes",
                 cache::SEARCH_CACHE_TTL.as_secs() / 60
             );
             if args.json {
@@ -145,7 +141,7 @@ async fn run_search(args: SearchArgs, color: bool) -> Result<()> {
         if failures.is_empty() {
             bail!("no results found for: {query}");
         }
-        bail!("no indexer returned results for: {query} (use --verbose for request failures)");
+        bail!("no mirror returned results for: {query} (use --verbose for request failures)");
     }
 
     if !args.no_cache
@@ -165,8 +161,8 @@ async fn run_search(args: SearchArgs, color: bool) -> Result<()> {
 
 fn run_cache(args: cli::CacheArgs) -> Result<()> {
     match args.command {
-        CacheCommand::Clear { include_indexers } => {
-            let removed = cache::clear(include_indexers)?;
+        CacheCommand::Clear { include_proxies } => {
+            let removed = cache::clear(include_proxies)?;
             if removed.is_empty() {
                 println!("Nothing to clear.");
             } else {

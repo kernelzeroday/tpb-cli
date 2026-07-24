@@ -1,0 +1,30 @@
+[
+  {
+    "id": "1000",
+    "name": "Ubuntu 24.04",
+    "info_hash": "ABC123DEF456",
+    "leechers": "4",
+    "seeders": "27",
+    "num_files": "1",
+    "size": "1503238553",
+    "username": "TeamUbuntu",
+    "added": "1767225600",
+    "status": "vip",
+    "category": "500",
+    "imdb": ""
+  },
+  {
+    "id": "1001",
+    "name": "Debian Bookworm",
+    "info_hash": "789GHI012JKL",
+    "leechers": "2",
+    "seeders": "12",
+    "num_files": "1",
+    "size": "739407257",
+    "username": "Anonymous",
+    "added": "1767139200",
+    "status": "",
+    "category": "0",
+    "imdb": ""
+  }
+]

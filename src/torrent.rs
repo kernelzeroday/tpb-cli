@@ -20,13 +20,13 @@ pub struct Torrent {
     #[serde(default, skip_serializing_if = "is_false")]
     pub averaged_swarm_stats: bool,
     #[serde(skip)]
-    seeder_total: u64,
+    pub(crate) seeder_total: u64,
     #[serde(skip)]
-    seeder_samples: u64,
+    pub(crate) seeder_samples: u64,
     #[serde(skip)]
-    leecher_total: u64,
+    pub(crate) leecher_total: u64,
     #[serde(skip)]
-    leecher_samples: u64,
+    pub(crate) leecher_samples: u64,
 }
 
 fn is_false(value: &bool) -> bool {

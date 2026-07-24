@@ -129,3 +129,21 @@ test fixtures are available.
   with a locally configured downloader?
 - Which platforms and installation method should be supported?
 - What retention, privacy, and cache-clearing behaviour should the CLI offer?
+
+## 2026-07-23 update: direction changed to a TPB-specific decentralized client
+
+After the first implementation (Torznab, per the recommendation above) shipped
+and was reviewed, the requested direction changed explicitly: target The
+Pirate Bay specifically rather than a generic Torznab indexer, use Shodan
+discovery with a built-in default fingerprint (no explicit query required, for
+parity with `magnets-cli`'s out-of-the-box `discover`), and treat "search
+several independent mirrors concurrently with no hardcoded single host" as the
+decentralization requirement (rather than a Mainline DHT/BEP5 client, which
+was considered and explicitly ruled out as disproportionate scope).
+
+The implementation was rebuilt around The Pirate Bay's public JSON search API
+("apibay") and mirrors running the same software: it has a documented,
+consistent response shape, so a discovered candidate can still be validated
+before use the same way a Torznab `?t=caps` probe was used previously, without
+depending on parsing an arbitrary proxy site's HTML (which was rejected for
+the same fragility reasons the original feasibility assessment raised).

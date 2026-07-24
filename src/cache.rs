@@ -1,4 +1,4 @@
-//! Local persistence: verified indexer endpoints (configuration, kept until
+//! Local persistence: verified proxy endpoints (configuration, kept until
 //! explicitly replaced) and search results (a cache, expired by TTL and
 //! clearable on demand).
 
@@ -33,7 +33,7 @@ fn cache_dir() -> Option<PathBuf> {
 }
 
 fn discovered_sources_path() -> Option<PathBuf> {
-    config_dir().map(|dir| dir.join("indexers"))
+    config_dir().map(|dir| dir.join("proxies"))
 }
 
 pub fn load_discovered_sources() -> Result<Vec<String>> {
@@ -130,10 +130,10 @@ pub fn save_cached_search(query: &str, torrents: &[Torrent]) -> Result<()> {
         .with_context(|| format!("could not write search cache {}", path.display()))
 }
 
-/// Removes cached search results. Discovered indexer endpoints are treated
+/// Removes cached search results. Discovered proxy endpoints are treated
 /// as configuration rather than a cache and are left untouched; pass
-/// `include_indexers` to remove them as well.
-pub fn clear(include_indexers: bool) -> Result<Vec<PathBuf>> {
+/// `include_proxies` to remove them as well.
+pub fn clear(include_proxies: bool) -> Result<Vec<PathBuf>> {
     let mut removed = Vec::new();
     if let Some(dir) = cache_dir().map(|dir| dir.join("searches"))
         && dir.exists()
@@ -141,7 +141,7 @@ pub fn clear(include_indexers: bool) -> Result<Vec<PathBuf>> {
         fs::remove_dir_all(&dir).with_context(|| format!("could not remove {}", dir.display()))?;
         removed.push(dir);
     }
-    if include_indexers
+    if include_proxies
         && let Some(path) = discovered_sources_path()
         && path.exists()
     {

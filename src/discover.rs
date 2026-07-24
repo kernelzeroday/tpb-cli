@@ -1,21 +1,28 @@
-//! Shodan-assisted endpoint discovery.
+//! Shodan-assisted discovery of Pirate Bay API mirrors.
 //!
 //! Shodan can locate HTTP services matching a search fingerprint, but a
-//! fingerprint match is not proof that a service speaks Torznab. Every
-//! candidate returned by Shodan is therefore probed with `?t=caps` and only
-//! kept if it returns a genuine Torznab capability document. Discovery never
-//! runs without an explicit, user-supplied Shodan query: there is no
-//! built-in default fingerprint, since baking in one indexer's signature
-//! would imply it is the only or the recommended one.
+//! fingerprint match is not proof that a service actually speaks this API.
+//! Every candidate returned by Shodan is therefore probed with a real
+//! search request and only kept if the response deserializes into the
+//! expected shape (see [`crate::proxy::is_valid_response`]).
+//!
+//! Discovery (rather than one hardcoded default host) is what makes search
+//! decentralized: results keep flowing even if any single mirror goes down,
+//! is rate-limited, or disappears.
 
+use crate::proxy;
 use crate::source::{Source, deduplicate_sources};
-use crate::torznab;
 use anyhow::{Context, Result, anyhow, bail};
 use futures_util::{StreamExt, stream};
 use reqwest::{Client, Url};
 use serde::Serialize;
 use std::time::{Duration, Instant};
 use tokio::{process::Command, time::timeout};
+
+/// A broad, free-text default so `tpb discover` works with zero flags, the
+/// same way `magnets discover` does out of the box. Override with one or
+/// more `--shodan-query` values for a narrower or different fingerprint.
+const DEFAULT_SHODAN_QUERY: &str = "apibay";
 
 #[derive(Debug, Clone)]
 pub struct DiscoveryOptions {
@@ -48,14 +55,14 @@ pub fn validate_options(options: &DiscoveryOptions) -> Result<()> {
 
 pub async fn discover(client: &Client, options: &DiscoveryOptions) -> Result<Vec<DiscoveryResult>> {
     validate_options(options)?;
-    if options.shodan_queries.is_empty() {
-        bail!(
-            "discovery requires at least one --shodan-query; there is no built-in default fingerprint"
-        );
-    }
+    let queries = if options.shodan_queries.is_empty() {
+        vec![DEFAULT_SHODAN_QUERY.to_string()]
+    } else {
+        options.shodan_queries.clone()
+    };
 
     let mut candidates = Vec::new();
-    for query in &options.shodan_queries {
+    for query in &queries {
         if options.verbose {
             eprintln!("shodan: {query}");
         }
@@ -136,17 +143,17 @@ fn candidate_url(host: &str, port: u16) -> String {
         host.to_string()
     };
     match port {
-        443 => format!("https://{host}/torznab"),
-        80 => format!("http://{host}/torznab"),
-        _ => format!("http://{host}:{port}/torznab"),
+        443 => format!("https://{host}"),
+        80 => format!("http://{host}"),
+        _ => format!("http://{host}:{port}"),
     }
 }
 
 async fn probe_source(client: &Client, source: Source) -> Result<DiscoveryResult> {
-    let endpoint = torznab::build_url(&source.endpoint, [("t", "caps")], None);
+    let endpoint = proxy::build_probe_url(&source.endpoint);
     let started = Instant::now();
     let response = client
-        .get(endpoint.clone())
+        .get(endpoint)
         .send()
         .await
         .with_context(|| format!("{} did not respond", source.endpoint))?
@@ -156,8 +163,8 @@ async fn probe_source(client: &Client, source: Source) -> Result<DiscoveryResult
         .text()
         .await
         .with_context(|| format!("could not read response from {}", source.endpoint))?;
-    if !torznab::is_caps_document(&body) {
-        bail!("{} is not a Torznab endpoint", source.endpoint);
+    if !proxy::is_valid_response(&body) {
+        bail!("{} is not a Pirate Bay API mirror", source.endpoint);
     }
     Ok(DiscoveryResult {
         endpoint: source.endpoint.to_string(),
@@ -171,19 +178,16 @@ mod tests {
     use super::*;
 
     #[test]
-    fn converts_shodan_address_to_torznab_endpoint() {
+    fn converts_shodan_address_to_a_base_url() {
         assert_eq!(
             candidate_url("203.0.113.7", 3333),
-            "http://203.0.113.7:3333/torznab"
+            "http://203.0.113.7:3333"
         );
-        assert_eq!(
-            candidate_url("2001:db8::1", 443),
-            "https://[2001:db8::1]/torznab"
-        );
+        assert_eq!(candidate_url("2001:db8::1", 443), "https://[2001:db8::1]");
     }
 
     #[test]
-    fn rejects_discovery_without_an_explicit_query() {
+    fn falls_back_to_the_default_query_when_none_supplied() {
         let options = DiscoveryOptions {
             shodan_queries: Vec::new(),
             shodan_limit: 50,
@@ -191,9 +195,7 @@ mod tests {
             timeout_secs: 10,
             verbose: false,
         };
-        // Compile-time only check that validate_options accepts these bounds;
-        // the empty-query error is asserted in the async `discover` path via
-        // the integration-level CLI tests.
         assert!(validate_options(&options).is_ok());
+        assert_eq!(DEFAULT_SHODAN_QUERY, "apibay");
     }
 }

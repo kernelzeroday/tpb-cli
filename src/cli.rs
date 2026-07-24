@@ -6,13 +6,12 @@ use std::ffi::OsString;
 #[command(
     name = "tpb",
     version,
-    about = "Search Torznab-compatible torrent indexers",
-    long_about = "Search one or more Torznab endpoints (for example a self-hosted Bitmagnet, \
-Jackett, or another compatible indexer) and print normalized, de-duplicated results.\n\
+    about = "Search The Pirate Bay proxy mirrors, decentralized across several at once",
+    long_about = "Search one or more Pirate Bay API mirrors concurrently and print normalized, \
+de-duplicated results. No single mirror is a point of failure: pass several with --proxy, set \
+TPB_PROXIES to a comma-separated list, or use --shodan to discover and verify mirrors first.\n\
 \n\
-Pass one or more full Torznab endpoint URLs with --indexer, set TPB_INDEXERS to a \
-comma-separated list, or use --shodan with an explicit --shodan-query to discover and \
-verify candidate endpoints before search."
+This never queries a single hardcoded host; you configure or discover the mirrors it uses."
 )]
 pub struct Cli {
     /// Disable ANSI styling
@@ -25,9 +24,9 @@ pub struct Cli {
 
 #[derive(Subcommand)]
 pub enum CommandKind {
-    /// Search configured Torznab endpoints concurrently
+    /// Search configured Pirate Bay API mirrors concurrently
     Search(SearchArgs),
-    /// Find and verify candidate Torznab endpoints using the local Shodan CLI
+    /// Find and verify candidate mirrors using the local Shodan CLI
     Discover(DiscoverArgs),
     /// Manage locally cached search results and discovered endpoints
     Cache(CacheArgs),
@@ -35,7 +34,7 @@ pub enum CommandKind {
 
 #[derive(Args, Clone)]
 pub struct DiscoveryOptions {
-    /// Shodan query identifying a candidate service (repeatable); required for discovery
+    /// Shodan query identifying a candidate mirror (repeatable); defaults to a broad fingerprint
     #[arg(long = "shodan-query")]
     pub shodan_queries: Vec<String>,
 
@@ -43,7 +42,7 @@ pub struct DiscoveryOptions {
     #[arg(long, default_value_t = 50)]
     pub shodan_limit: usize,
 
-    /// Maximum simultaneous capability probes or search requests
+    /// Maximum simultaneous validation probes or search requests
     #[arg(long, default_value_t = 12)]
     pub concurrency: usize,
 
@@ -72,32 +71,24 @@ pub struct SearchArgs {
     #[arg(required = true)]
     pub query: Vec<String>,
 
-    /// Full Torznab endpoint URL; may be supplied more than once
+    /// Base URL of a Pirate Bay API mirror; may be supplied more than once
     #[arg(short, long, visible_alias = "source")]
-    pub indexer: Vec<String>,
+    pub proxy: Vec<String>,
 
-    /// Discover candidate endpoints with Shodan before searching (requires --shodan-query)
+    /// Discover candidate mirrors with Shodan before searching
     #[arg(long)]
     pub shodan: bool,
 
     #[command(flatten)]
     pub discovery: DiscoveryOptions,
 
-    /// Torznab API key added as the `apikey` parameter
-    #[arg(long, env = "TPB_API_KEY")]
-    pub api_key: Option<String>,
-
     /// Maximum combined results to print
     #[arg(short = 'n', long, default_value_t = 40)]
     pub limit: usize,
 
-    /// Concurrent endpoint count per fallback batch
+    /// Concurrent mirror count per fallback batch
     #[arg(long, default_value_t = 10)]
     pub fanout: usize,
-
-    /// Number of results requested from each endpoint before combining them
-    #[arg(long, default_value_t = 20)]
-    pub per_source_limit: usize,
 
     /// Do not read or write the local search-result cache
     #[arg(long)]
@@ -120,7 +111,7 @@ pub enum CacheCommand {
     Clear {
         /// Also remove endpoints saved by a previous `discover`
         #[arg(long)]
-        include_indexers: bool,
+        include_proxies: bool,
     },
 }
 

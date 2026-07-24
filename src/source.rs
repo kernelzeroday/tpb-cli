@@ -24,15 +24,17 @@ impl Source {
     }
 }
 
-/// Resolves the sources to search, in priority order: explicit `--indexer`
-/// flags, then `TPB_INDEXERS`, then any endpoints saved by a previous
-/// `tpb discover`.
-pub fn configured_sources(indexers: &[String]) -> Result<Vec<Source>> {
-    if !indexers.is_empty() {
-        return parse_sources(indexers.to_vec(), "cli");
+/// Resolves the sources to search, in priority order: explicit `--proxy`
+/// flags, then `TPB_PROXIES`, then any endpoints saved by a previous
+/// `tpb discover`. Supporting several independent sources at once, rather
+/// than one hardcoded default host, is what makes search decentralized:
+/// no single mirror going down or rate-limiting stops a search.
+pub fn configured_sources(proxies: &[String]) -> Result<Vec<Source>> {
+    if !proxies.is_empty() {
+        return parse_sources(proxies.to_vec(), "cli");
     }
 
-    if let Some(value) = env::var_os("TPB_INDEXERS") {
+    if let Some(value) = env::var_os("TPB_PROXIES") {
         let sources = value
             .to_string_lossy()
             .split(',')
@@ -50,7 +52,9 @@ pub fn parse_sources(raw: Vec<String>, origin: &str) -> Result<Vec<Source>> {
     raw.into_iter()
         .map(|input| {
             let endpoint = Url::parse(&input).with_context(|| {
-                format!("invalid indexer URL `{input}`; pass the full Torznab endpoint URL")
+                format!(
+                    "invalid proxy URL `{input}`; pass the full base URL of a Pirate Bay API mirror"
+                )
             })?;
             match endpoint.scheme() {
                 "http" | "https" => Ok(Source {
@@ -85,7 +89,7 @@ mod tests {
 
     #[test]
     fn rejects_non_http_schemes() {
-        let result = parse_sources(vec!["ftp://example.test/torznab".to_string()], "cli");
+        let result = parse_sources(vec!["ftp://example.test".to_string()], "cli");
         assert!(result.is_err());
     }
 
@@ -93,8 +97,8 @@ mod tests {
     fn deduplicates_by_normalized_endpoint() {
         let sources = parse_sources(
             vec![
-                "http://example.test/torznab/".to_string(),
-                "HTTP://EXAMPLE.TEST/torznab".to_string(),
+                "http://example.test/".to_string(),
+                "HTTP://EXAMPLE.TEST".to_string(),
             ],
             "cli",
         )
